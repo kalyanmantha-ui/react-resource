@@ -28,7 +28,11 @@ In most React applications, fetching data and managing loading/error states is r
 
 ---
 
-## Installation (Local Development)
+## Installation
+
+This package is not yet published to npm.
+
+For local development, install it from the core package:
 
 ```bash
-npm install react-resource
+npm install ../packages/core
