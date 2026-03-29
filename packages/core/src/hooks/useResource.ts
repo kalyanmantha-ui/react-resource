@@ -41,9 +41,9 @@ export default function useResource<T>(config : Config<T>){
 
     const hasMore = useRef(true);
 
-    async function asyncNormalize(){
+    async function asyncNormalize(localPage:number){
         const params = {
-            page : page,
+            page : localPage,
             pageSize : pageSize,
         }
         setLoading(true)
@@ -82,13 +82,21 @@ export default function useResource<T>(config : Config<T>){
             }
         }
 
-        const rawData = await asyncNormalize();
+        const localPage = page;
+
+        const rawData = await asyncNormalize(localPage);
         if(!rawData) return;
 
         if(rawData.length < pageSize) hasMore.current = false;
         setData(prev => {
             if(isPageMode) return rawData;
-            return page === 1 ? rawData : [...prev , ...rawData];
+            const indexStart = (localPage -1) * pageSize;
+            const newData = [...prev];
+
+            for(let i=0 ; i<rawData.length ; i++){
+                newData[indexStart + i] = rawData[i];
+            }
+            return newData;
         })
 
         if(isPageMode){
