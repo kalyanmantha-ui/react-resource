@@ -1,58 +1,161 @@
-import {useEffect , useState , useRef} from "react";
+import {useEffect , useState , useRef , useMemo} from "react";
 import normalizeSource from "../engine/source";
-import type { ResourceParams , Source } from "../engine/source";
+import type {Source } from "../engine/source";
 
 
+type PaginationConfig = {
+    type : "page" | "loadmore" | "infinite";
+    pageSize? : number
+}
 
+type virtualizationConfig = {
+    enabled : boolean;
+    itemHeight : number;
+    containerHeight : number;
+}
 type Config<T> = {
     source : Source<T>;
-    pagination? : ResourceParams;
+    pagination? :PaginationConfig;
+    virtualization ? : virtualizationConfig;
 }
 
 
+
+
+
 export default function useResource<T>(config : Config<T>){
+    const pagination = config.pagination;
     const [data , setData] = useState<T[]>([]);
     const [error , setError] = useState<Error | null>(null);
     const [loading , setLoading] = useState(false);
-    const pagination = config.pagination;
-    const page = pagination?.page
-    const pageSize = pagination?.pageSize;
+    const [page , setPage] = useState(1);
+    const [scrollTop , setScrollTop] = useState(0);
+    const pageSize = pagination?.pageSize ? pagination?.pageSize : 10;
     const source = config.source;
     const requestTracker = useRef<number>(0);
-    useEffect(() => {
+    const cache = useRef<Record<number,T[]>>({});
+    const virtualization = config.virtualization?.enabled;
+    const getData = useMemo(() => normalizeSource(source), [source]);
+    const prevScrollTop = useRef(0);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+
+    const hasMore = useRef(true);
+
+    async function asyncNormalize(){
         const params = {
             page : page,
             pageSize : pageSize,
         }
+        setLoading(true)
+        requestTracker.current += 1;
+    const currentRequestId = requestTracker.current;
+    setError(null);
+    try{
         
-       async function asyncNormalize(){
-            setLoading(true)
-            requestTracker.current += 1;
-        const currentRequestId = requestTracker.current;
-        setError(null);
-        try{
-            const getData = normalizeSource(source);
-            const rawData = await getData(params);
-            if(currentRequestId === requestTracker.current) {
-                setData(rawData);
-                setLoading(false);
-                
-            }
-        }catch(err){
-            if(currentRequestId === requestTracker.current){
-                if(err instanceof Error){
-                    setError(err as Error);
-                }else{
-                    setError(new Error("unknown error"))
-                }
+        const rawData = await getData(params);
+        if(currentRequestId !== requestTracker.current){
             setLoading(false);
+            return;
+        };
+            setLoading(false);
+            return rawData;
+            
+    }catch(err){
+        if(currentRequestId === requestTracker.current){
+            if(err instanceof Error){
+                setError(err as Error);
+            }else{
+                setError(new Error("unknown error"))
+            }
+        setLoading(false);
+        }
+    }
+   }
+    async function orchestrator(){
+        const isPageMode = pagination?.type === "page";
+        prevScrollTop.current = scrollTop;
+        const cached = cache.current[page];
+        if(isPageMode){
+            if(cached){
+                setData(cached);
+                return;
             }
         }
-       }
 
-       
-       asyncNormalize();
-    },[page,pageSize,source])
+        const rawData = await asyncNormalize();
+        if(!rawData) return;
 
-    return {data , loading , error}
+        if(rawData.length < pageSize) hasMore.current = false;
+        setData(prev => {
+            if(isPageMode) return rawData;
+            return page === 1 ? rawData : [...prev , ...rawData];
+        })
+
+        if(isPageMode){
+            cache.current[page] = rawData;
+            Object.keys(cache.current).forEach((val:string) => {
+                if(Math.abs(page-(+val)) > 1){
+                    delete cache.current[+val];
+                }
+            })
+        }
+    }
+
+    useEffect(() => {
+        if (!hasMore.current) return;
+        if (pagination?.type !== "infinite") return;
+      
+        const el = scrollRef.current;
+        if (!el) return;
+      
+        const remaining =
+          el.scrollHeight - scrollTop - el.clientHeight;
+      
+        if (remaining < 50 && !loading) {
+          ((() => {
+            setPage((prev) => prev + 1)
+          })());
+        }
+      }, [scrollTop, pagination?.type, loading]);
+
+
+
+    useEffect(() => {
+        orchestrator();
+        
+    },[page,pageSize,source,pagination?.type])
+
+    useEffect(() => {
+        if(pagination?.type === 'page'){
+            ((() => setScrollTop(0))())
+        }
+    },[page,pagination?.type])
+
+    useEffect(() => {
+        if (pagination?.type !== "page") {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = prevScrollTop.current;
+          }
+        }
+      }, [data]);  
+
+    let finalData = data;
+    const itemHeight = config.virtualization?.itemHeight ?? 40;
+    const containerHeight = config.virtualization?.containerHeight ?? 400;
+    const shouldVirtualize = virtualization && data.length * itemHeight > containerHeight;
+    let offsetY = 0;
+    let totalHeight = 0;
+    if (shouldVirtualize) {
+        const total = data.length;
+        const rawStart = Math.floor(scrollTop / itemHeight);
+        const startIndex = Math.max(0, rawStart - 2);
+        const visibleCount = Math.ceil(containerHeight / itemHeight);
+        const endIndex = Math.min(startIndex + visibleCount + 4, total);
+
+        finalData = data.slice(startIndex, endIndex);
+        offsetY = itemHeight * startIndex;
+        totalHeight = total * itemHeight;
+    }
+
+    return {data : finalData , loading , error , page , setPage,setScrollTop , offsetY , totalHeight , totalItems : data.length , scrollRef }
 }
