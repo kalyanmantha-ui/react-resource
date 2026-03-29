@@ -41,74 +41,81 @@ export default function useResource<T>(config : Config<T>){
 
     const hasMore = useRef(true);
 
-    async function asyncNormalize(localPage:number){
+    async function asyncNormalize(localPage: number) {
         const params = {
-            page : localPage,
-            pageSize : pageSize,
-        }
-        setLoading(true)
-        requestTracker.current += 1;
-    const currentRequestId = requestTracker.current;
-    setError(null);
-    try{
-        
-        const rawData = await getData(params);
-        if(currentRequestId !== requestTracker.current){
-            setLoading(false);
-            return;
+          page: localPage,
+          pageSize: pageSize,
         };
-            setLoading(false);
-            return rawData;
-            
-    }catch(err){
-        if(currentRequestId === requestTracker.current){
-            if(err instanceof Error){
-                setError(err as Error);
-            }else{
-                setError(new Error("unknown error"))
-            }
+      
+        try {
+          const rawData = await getData(params);
+          return { data: rawData, error: null };
+        } catch (err) {
+          return {
+            data: null,
+            error: err instanceof Error ? err : new Error("unknown error"),
+          };
+        }
+      }
+   async function orchestrator() {
+    const isPageMode = pagination?.type === "page";
+    prevScrollTop.current = scrollTop;
+  
+    const cached = cache.current[page];
+    if (isPageMode && cached) {
+      setData(cached);
+      return;
+    }
+  
+    const localPage = page;
+  
+    requestTracker.current += 1;
+    const currentRequestId = requestTracker.current;
+  
+    setLoading(true);
+    setError(null);
+  
+    const result = await asyncNormalize(localPage);
+  
+    if (currentRequestId !== requestTracker.current){
         setLoading(false);
-        }
+        return;
+    };
+  
+    setLoading(false);
+  
+    if (result.error) {
+      setError(result.error);
+      return;
     }
-   }
-    async function orchestrator(){
-        const isPageMode = pagination?.type === "page";
-        prevScrollTop.current = scrollTop;
-        const cached = cache.current[page];
-        if(isPageMode){
-            if(cached){
-                setData(cached);
-                return;
-            }
+  
+    const rawData = result.data;
+    if (!rawData || rawData.length < 1) return;
+  
+    if (rawData.length < pageSize) hasMore.current = false;
+  
+    setData((prev) => {
+      if (isPageMode) return rawData;
+  
+      const indexStart = (localPage - 1) * pageSize;
+      const newData = [...prev];
+  
+      for (let i = 0; i < rawData.length; i++) {
+        newData[indexStart + i] = rawData[i];
+      }
+  
+      return newData;
+    });
+  
+    if (isPageMode) {
+      cache.current[localPage] = rawData;
+      Object.keys(cache.current).forEach((val: string) => {
+        if (Math.abs(localPage - +val) > 1) {
+          delete cache.current[+val];
         }
-
-        const localPage = page;
-
-        const rawData = await asyncNormalize(localPage);
-        if(!rawData) return;
-
-        if(rawData.length < pageSize) hasMore.current = false;
-        setData(prev => {
-            if(isPageMode) return rawData;
-            const indexStart = (localPage -1) * pageSize;
-            const newData = [...prev];
-
-            for(let i=0 ; i<rawData.length ; i++){
-                newData[indexStart + i] = rawData[i];
-            }
-            return newData;
-        })
-
-        if(isPageMode){
-            cache.current[page] = rawData;
-            Object.keys(cache.current).forEach((val:string) => {
-                if(Math.abs(page-(+val)) > 1){
-                    delete cache.current[+val];
-                }
-            })
-        }
+      });
     }
-
+  }
     useEffect(() => {
         if (!hasMore.current) return;
         if (pagination?.type !== "infinite") return;
