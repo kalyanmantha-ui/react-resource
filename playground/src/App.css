@@ -182,3 +182,24 @@
     border-right-color: var(--border);
   }
 }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cell {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+td, th {
+  padding: 0;
+  border: 1px solid #444;
+  text-align: left;
+}
