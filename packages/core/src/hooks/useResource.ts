@@ -39,7 +39,8 @@ export default function useResource<T>(config : Config<T>){
     const prevScrollTop = useRef(0);
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    const hasMore = useRef(true);
+    const [hasNext,setHasNext] = useState(true);
+    const total = useRef<null | number>(null)
 
     async function asyncNormalize(localPage: number) {
         const params = {
@@ -60,14 +61,17 @@ export default function useResource<T>(config : Config<T>){
    async function orchestrator() {
     const isPageMode = pagination?.type === "page";
     prevScrollTop.current = scrollTop;
+    const localPage = page;
   
-    const cached = cache.current[page];
+    const cached = cache.current[localPage];
     if (isPageMode && cached) {
       setData(cached);
       return;
     }
   
-    const localPage = page;
+    
+    setHasNext(true);
+    total.current = null;
   
     requestTracker.current += 1;
     const currentRequestId = requestTracker.current;
@@ -88,11 +92,25 @@ export default function useResource<T>(config : Config<T>){
       setError(result.error);
       return;
     }
-  
-    const rawData = result.data;
-    if (!rawData || rawData.length < 1) return;
-  
-    if (rawData.length < pageSize) hasMore.current = false;
+    let rawData;
+
+    if(Array.isArray(result.data)){
+        rawData = result.data;
+    }else{
+        total.current = result.data.total;
+        rawData = result.data.data
+    }
+
+    if (total.current !== null) {
+        
+          setHasNext(localPage < Math.ceil(total.current / pageSize));
+      } else {
+        if (rawData.length < pageSize) {
+          setHasNext(false);
+        }
+      }
+
+    if (!rawData) return;
   
     setData((prev) => {
       if (isPageMode) return rawData;
@@ -117,7 +135,7 @@ export default function useResource<T>(config : Config<T>){
     }
   }
     useEffect(() => {
-        if (!hasMore.current) return;
+        if (!hasNext) return;
         if (pagination?.type !== "infinite") return;
       
         const el = scrollRef.current;
@@ -131,7 +149,7 @@ export default function useResource<T>(config : Config<T>){
             setPage((prev) => prev + 1)
           })());
         }
-      }, [scrollTop, pagination?.type, loading]);
+      }, [scrollTop, pagination?.type, loading , hasNext]);
 
 
 
@@ -172,5 +190,5 @@ export default function useResource<T>(config : Config<T>){
         totalHeight = total * itemHeight;
     }
 
-    return {data : finalData , loading , error , page , setPage,setScrollTop , offsetY , totalHeight , totalItems : data.length , scrollRef }
+    return {data : finalData , loading , error , page , setPage,setScrollTop , offsetY , totalHeight , totalItems : data.length , scrollRef , hasNext }
 }

@@ -6,7 +6,7 @@ export type ResourceParams = {
   export type Source<T> =
     | T[]
     | string
-    | ((params: ResourceParams) => Promise<T[]>);
+    | ((params: ResourceParams) => Promise<T[] | {data : T[] , total : number}>);
   
   export default function normalizeSource<T>(source: Source<T>) {
     return async function getData(params: ResourceParams) {
@@ -32,7 +32,7 @@ export type ResourceParams = {
           }
   
           const jsonData = await call.json();
-          return jsonData as T[];
+          return jsonData;
         } catch (err) {
           if (err instanceof Error) throw err;
           throw new Error("Unknown error");
