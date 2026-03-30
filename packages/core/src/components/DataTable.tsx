@@ -34,7 +34,7 @@ export default function DataTable<T extends Record<string, unknown>>(
   const offsetY = props.offsetY ?? 0;
   const totalHeight = props.totalHeight ?? 0;
   const itemHeight = 50;
-  const colCount = data[0] ? Object.keys(data[0]).length : 1;
+  const columns = data[0] ? Object.keys(data[0]) : [];
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>{error.message}</div>;
@@ -45,7 +45,7 @@ export default function DataTable<T extends Record<string, unknown>>(
     <table>
       <thead>
         <tr>
-          {Object.keys(data[0]).map((val) => (
+          {columns.map((val) => (
             <th key={val}>{val}</th>
           ))}
         </tr>
@@ -54,13 +54,15 @@ export default function DataTable<T extends Record<string, unknown>>(
       <tbody>
         {virtualization && (
           <tr style={{ height: offsetY }}>
-            <td colSpan={colCount} />
+            {columns.map((key) => (
+              <td key={key} />
+            ))}
           </tr>
         )}
 
         {data.map((val, index) => (
           <tr key={index}>
-            {Object.keys(val).map((key) => {
+            {columns.map((key) => {
               const value = (val as Record<string, unknown>)[key];
               return (
                 <td key={key}>
@@ -76,11 +78,15 @@ export default function DataTable<T extends Record<string, unknown>>(
         {virtualization && (
           <tr
             style={{
-              height:
-                totalHeight - offsetY - data.length * itemHeight,
+              height: Math.max(
+                0,
+                totalHeight - offsetY - data.length * itemHeight
+              ),
             }}
           >
-            <td colSpan={colCount} />
+            {columns.map((key) => (
+              <td key={key} />
+            ))}
           </tr>
         )}
       </tbody>
